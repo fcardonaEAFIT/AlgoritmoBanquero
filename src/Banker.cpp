@@ -3,8 +3,9 @@
 #include <iostream>
 
 Banker::Banker(string filename) :
-  inputFile(filename), listProcess(), infoLevel(NoInfo)
-{
+  inputFile(filename),
+  listProcess(),
+  infoLevel(NoInfo) {
 
   ifstream infile(filename.c_str());
 
@@ -12,48 +13,86 @@ Banker::Banker(string filename) :
     throw BankerException(InputException,
 			  "opening file");
 
-  infile >> n >> m;
+  try {
+    YAML::Node bankerInfo = YAML::Load(infile);
 
-  if (!infile)
-    throw BankerException(FormatException,
-			  "reading n and m");
+    if (!bankerInfo["processes"]
+	or !bankerInfo["resources"]) {
+      throw BankerException(FormatException,
+			    "Not found process or resources numbers");
+    }
+    else {
+      processes = bankerInfo["processes"].as<int>();
+      resources = bankerInfo["resources"].as<int>();
+    }
+    
+    availables = new int[resources];
+    work = new int[resources];
+    finish = new int[processes];
+    max = new int*[processes];
+    allocated = new int*[processes];
+    need = new int*[processes];
 
-  available = new int[m];
-  work = new int[m];
-  finish = new int[n];
-  max = new int*[n];
-  allocation = new int*[n];
-  need = new int*[n];
+    if (!availables and
+	!work and
+	!finish and
+	!max and
+	!allocated and
+	!need) {
+      throw BankerException(MemoryAllocException,
+			    "creating vectors and matrices failed");
+    }
 
-  if (!available and !work and !finish and !max and !allocation and !need)
+    if (!bankerInfo["vectors"]["availables"]) {
+      	throw BankerException(FormatException,
+			      "Vector available is not defined");
+    }
+    
+    YAML::Node availablesNode = bankerInfo["vectors"]["availables"];
+    if (availablesNode.size() != (std::size_t) resources) {
+      throw BankerException(FormatException,
+			    "Number of resources on available vector doesn't found");
+    }
+      
+    for (std::size_t j = 0; j < availablesNode.size(); j++) {
+	availables[j] = availablesNode[j].as<int>();
+    }
+
+    if (!bankerInfo["vectors"]["max"]) {
+      throw BankerException(FormatException,
+			    "Vector max is not found");
+    }
+
+    YAML::Node maxNode = bankerInfo["vectors"]["max"];
+    readMatrixYAML(maxNode, max, "reading max");
+
+    if (!bankerInfo["vectors"]["allocated"]) {
+      throw BankerException(FormatException,
+			    "Vector allocated is not found");
+    }
+
+    YAML::Node allocatedNode = bankerInfo["vectors"]["allocated"];
+    readMatrixYAML(allocatedNode, allocated, "reading allocated");
+
+    for (int i = 0; i < processes; i++) {
+      need[i] = new int[resources];
+      for (int j = 0; j < resources; j++) {
+	need[i][j] = max[i][j] - allocated[i][j];
+      }
+    }
+  }
+  catch (const YAML::Exception& e) {
     throw BankerException(MemoryAllocException,
-			  "creating vectors and matrix");
-
-  // Reading available
-  for (int j = 0; j < m; j++)
-     infile >> available[j];
-
-  if (!infile)
-    throw BankerException(FormatException,
-			  "reading available");
-
-  readMatrix(infile, max, "reading max");
-
-  readMatrix(infile, allocation, "reading allocation");
-
-  // Compute need = max - allocation
-  for (int i = 0; i < n; i++) {
-    need[i] = new int[m];
-    for (int j = 0; j < m; j++)
-      need[i][j] = max[i][j] - allocation[i][j];
+			  "");
   }
 }
 
 void
 Banker::testMemory(void *p) const {
-  if (!p)
+  if (!p) {
     throw BankerException(MemoryAllocException,
 			  "bad pointer");
+  }
 }
 
 /* Banker::readMatrix
@@ -61,45 +100,84 @@ Banker::testMemory(void *p) const {
  * and m columns.
  */
 void
-Banker::readMatrix(ifstream& in, int **matrix, const char* msg) {
+Banker::readMatrix(ifstream& in,
+		   int **matrix,
+		   const char* msg) {
 
-  for (int i = 0; i < n; i++) {
-    matrix[i] = new int[m];
+  for (int i = 0; i < processes; i++) {
+    matrix[i] = new int[resources];
     testMemory(matrix[i]);
 
-    for (int j = 0; j < m; j++) {
+    for (int j = 0; j < resources; j++) {
       in >> matrix[i][j];
     }
 
-    if (!in) throw BankerException(FormatException, msg);
+    if (!in) {
+      throw BankerException(FormatException, msg);
+    }
   }
 }
 
+void
+Banker::readMatrixYAML(YAML::Node& node,
+		       int **matrix,
+		       const char* msg) {
+
+  if (node.size() != (std::size_t) processes) {
+    throw BankerException(FormatException, msg);
+  }
+  
+  for (std::size_t i = 0; i < node.size(); i++) {
+    if (node[i].size() != (std::size_t) resources) {
+      throw BankerException(FormatException, msg);
+    }
+    
+    matrix[i] = new int[node[i].size()];
+    testMemory(matrix[i]);
+
+    for (std::size_t j = 0; j < node[i].size(); j++) {
+      matrix[i][j] = node[i][j].as<int>();
+    }
+  }
+}
+ 
 bool
 Banker::isInSafeState() {
 
   listProcess.erase(listProcess.begin(), listProcess.end());
 
-  for (int j = 0; j < m; j++) work[j] = available[j];
-  for (int i = 0; i < n; i++) finish[i] = false;
+  for (int j = 0; j < resources; j++) {
+    work[j] = availables[j];
+  }
+  
+  for (int i = 0; i < processes; i++) {
+    finish[i] = false;
+  }
 
   int found = 0, preFounded;
 
   do {
     preFounded = found;
 
-    for (int i = 0; i < n; i++) {
-      if (finish[i]) continue;
-      if (lessThat(need[i], work, m)) {
-	for (int j = 0; j < m; j++) work[j] += allocation[i][j];
+    for (int i = 0; i < processes; i++) {
+      if (finish[i]) {
+	continue;
+      }
+      
+      if (lessThat(need[i], work, resources)) {
+	
+	for (int j = 0; j < resources; j++) {
+	  work[j] += allocated[i][j];
+	}
+	
 	finish[i] = true;
 	found++;
 	listProcess.push_back(i);
       }
     }
-  } while (found < n and found != preFounded);
+  } while (found < processes and found != preFounded);
 
-  return found == n;
+  return found == processes;
 }
 
 
@@ -108,8 +186,13 @@ Banker::isInSafeState2() {
 
   listProcess.erase(listProcess.begin(), listProcess.end());
 
-  for (int j = 0; j < m; j++) work[j] = available[j];
-  for (int i = 0; i < n; i++) finish[i] = false;
+  for (int j = 0; j < resources; j++) {
+    work[j] = availables[j];
+  }
+  
+  for (int i = 0; i < processes; i++) {
+    finish[i] = false;
+  }
 
   int found = 0, preFounded;
 
@@ -118,20 +201,25 @@ Banker::isInSafeState2() {
   do {
     preFounded = found;
 
-    for (int i = 0; i < n; i++) {
-      if (finish[i]) continue;
-      if (lessThat(need[i], work, m)) {
+    for (int i = 0; i < processes; i++) {
+      if (finish[i]) {
+	continue;
+      }
+      
+      if (lessThat(need[i], work, resources)) {
 	showProcess(i);
-	for (int j = 0; j < m; j++) work[j] += allocation[i][j];
+	for (int j = 0; j < resources; j++) {
+	  work[j] += allocated[i][j];
+	}
 	finish[i] = true;
 	found++;
 	listProcess.push_back(i);
 	showProcess(i);
       }
     }
-  } while (found < n and found != preFounded);
+  } while (found < processes and found != preFounded);
 
-  return found == n;
+  return found == processes;
 }
 
 void
@@ -152,9 +240,13 @@ Banker::lessThat(const int *x, const int *y, int len) {
   bool ret = false;
 
   int i = 0;
-  for (; i < len and x[i] <= y[i]; i++);
+  for (; i < len and x[i] <= y[i]; i++) {
+    ; // do nothing
+  }
 
-  if (i == len) ret = true;
+  if (i == len) {
+    ret = true;
+  }
 
   return ret;
 }
@@ -168,14 +260,20 @@ Banker::setInfoLevel(InfoLevel infoLevel) {
 Banker::BankerException::BankerException(ReasonException r,
 					 const char* msg) throw()
   : message(NULL), re(r) {
-  const char *reasons[] = { "Input exception ",
-			    "Format exception ",
-			    "Memory allocation exception: ",
-                            NULL };
+  const char *reasons[] = {
+    "Input exception ",
+    "Format exception ",
+    "Memory allocated exception: ",
+    NULL
+  };
+  
   int reStrLen = 0;
+  
   for (int i = 0; reasons[i]; i++) {
     int len = ::strlen(reasons[i]);
-    if (reStrLen < len) reStrLen = len;
+    if (reStrLen < len) {
+      reStrLen = len;
+    }
   }
 
   // Manage to append a new message
@@ -193,34 +291,41 @@ Banker::BankerException::what() const throw() {
 
 Banker::BankerException::~BankerException() throw() {
 
-  if (message)
+  if (message) {
     delete[] message;
+  }
 }
 
 template<typename T> void
 Banker::showRowN(T* row, int n) {
 
-  for (int i = 0; i < n; i++)
+  for (int i = 0; i < n; i++) {
     cout << row[i] << " ";
+  }
 }
 
 void
 Banker::showMatrices() {
 
-  cout << '\t' << "Allocation" << '\t' << "Max" << '\t' << "Need" << '\t' << "Available" << endl;
+  cout << '\t'
+       << "Allocated"
+       << '\t' << "Max"
+       << '\t' << "Need"
+       << '\t' << "Available"
+       << endl;
 
-  for (int i = 0; i < n; i++) {
+  for (int i = 0; i < processes; i++) {
 
     cout << i << '\t';
-    showRowN(allocation[i], m);
+    showRowN(allocated[i], resources);
     cout << '\t' << '\t';
-    showRowN(max[i], m);
+    showRowN(max[i], resources);
     cout << '\t';
-    showRowN(need[i], m);
+    showRowN(need[i], resources);
 
     if (!i) {
       cout << '\t';
-      showRowN(available, m);
+      showRowN(availables, resources);
     }
 
     cout << endl;
@@ -232,47 +337,53 @@ Banker::showProcess(int process) {
 
   cout << "Process: ";
 
-  if (process == -1) cout << ' ';
-  else cout << process;
+  if (process == -1) {
+    cout << ' ';
+  }
+  else {
+    cout << process;
+  }
 
   cout << " finish: ";
-  showRowN(finish, n);
+  showRowN(finish, processes);
   cout << "\twork: ";
-  showRowN(work, m);
+  showRowN(work, resources);
   cout << endl;
 }
 
 int
 Banker::getNumberProcess() const {
 
-  return n;
+  return processes;
 }
 
 int
 Banker::getNumberKndResources() const {
 
-  return m;
+  return resources;
 }
 
 void
-Banker::evalRequirement(int* requirement, int nroReq, int nProcess) {
+Banker::evalRequirement(int* requirement,
+			int nroReq,
+			int nProcess) {
 
-  if (!lessThat(requirement, need[nProcess], m)) {
+  if (!lessThat(requirement, need[nProcess], resources)) {
 
     cerr << "Process has exhausted resources" << endl;
     return;
   }
 
-  if (!lessThat(requirement, available, m)) {
+  if (!lessThat(requirement, availables, resources)) {
 
     cerr << "Process has to wait" << endl;
     return;
   }
 
-  for (int j = 0; j < m; j++) {
+  for (int j = 0; j < resources; j++) {
 
-    available[j] -= requirement[j];
-    allocation[nProcess][j] += requirement[j];
+    availables[j] -= requirement[j];
+    allocated[nProcess][j] += requirement[j];
     need[nProcess][j] -= requirement[j];
   }
 
@@ -281,10 +392,10 @@ Banker::evalRequirement(int* requirement, int nroReq, int nProcess) {
     cerr << "The requirement could cause a unsafe state" << endl;
     cerr << "rollback the previous requirement" << endl;
 
-    for (int j = 0; j < m; j++) {
+    for (int j = 0; j < resources; j++) {
 
-      available[j] += requirement[j];
-      allocation[nProcess][j] -= requirement[j];
+      availables[j] += requirement[j];
+      allocated[nProcess][j] -= requirement[j];
       need[nProcess][j] += requirement[j];
     }
     return;

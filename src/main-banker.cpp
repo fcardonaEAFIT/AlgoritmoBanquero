@@ -13,43 +13,14 @@ usage(const char* progname) {
 enum ProcReq { EndProcReq, NextProcReq, ReadyProcReq };
 
 ProcReq readingRequirement(const Banker& banker, int& nProcess,
-			   int* requirement, const int& nResources) {
-
-  cout << "get process number (<0 to end): ";
-  cin >> nProcess;
-
-  if (!cin) {
-    cerr << "Bad format" << endl;
-    ::exit(1);
-  }
-
-  if (nProcess < 0)
-    return EndProcReq;
-
-  if (!(nProcess < banker.getNumberProcess())) {
-    cerr << "nroProcess incorrect" << endl;
-    return NextProcReq;
-  }
-
-  cout << "Enter requirement (" << nResources << "): ";
-
-  for (int j = 0; j < nResources; j++) {
-
-    cin >> requirement[j];
-  }
-
-  if (!cin) {
-    cerr << "Bad format of requirement" << endl;
-    return NextProcReq;
-  }
-
-  return ReadyProcReq;
-}
+			   int* requirement, const int& nResources);
 
 int
 main(int argc, const char *argv[]) {
 
-  if (argc != 2) usage(argv[0]);
+  if (argc != 2) {
+    usage(argv[0]);
+  }
 
   try {
 
@@ -81,4 +52,38 @@ main(int argc, const char *argv[]) {
   }
 
   return 0;
+}
+
+ProcReq readingRequirement(const Banker& banker, int& nProcess,
+			   int* requirement, const int& nResources) {
+
+  cout << "get process number (<0 to end): ";
+  cin >> nProcess;
+
+  if (!cin) {
+    cerr << "Bad format" << endl;
+    ::exit(1);
+  }
+
+  if (nProcess < 0)
+    return EndProcReq;
+
+  if (!(nProcess < banker.getNumberProcess())) {
+    cerr << "nroProcess incorrect" << endl;
+    return NextProcReq;
+  }
+
+  cout << "Enter requirement (" << nResources << "): ";
+
+  for (int j = 0; j < nResources; j++) {
+
+    cin >> requirement[j];
+  }
+
+  if (!cin) {
+    cerr << "Bad format of requirement" << endl;
+    return NextProcReq;
+  }
+
+  return ReadyProcReq;
 }
