@@ -1,6 +1,6 @@
 #include <iostream>
 #include <cstdlib>
-#include "Banker.h"
+#include "banker.h"
 
 using namespace std;
 

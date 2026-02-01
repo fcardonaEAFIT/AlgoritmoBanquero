@@ -4,7 +4,7 @@ BINDIR=bin
 
 all:
 SRCDIR=src
-OBJECTS=${SRCDIR}/main-banker.o ${SRCDIR}/Banker.o
+OBJECTS=${SRCDIR}/main-banker.o ${SRCDIR}/banker.o
 CXXFLAGS=-g -Wall
 LDFLAGS=-lyaml-cpp
 
@@ -16,9 +16,9 @@ ${BINDIR}/main-banker: ${OBJECTS} ${BINDIR}
 ${BINDIR}:
 	mkdir bin
 
-${SRCDIR}/main-banker.o: ${SRCDIR}/main-banker.cpp ${SRCDIR}/Banker.h
+${SRCDIR}/main-banker.o: ${SRCDIR}/main-banker.cpp ${SRCDIR}/banker.h
 
-${SRCDIR}/Banker.o: ${SRCDIR}/Banker.cpp ${SRCDIR}/Banker.h
+${SRCDIR}/banker.o: ${SRCDIR}/banker.cpp ${SRCDIR}/banker.h
 
 clean:
 	rm -R -f ${SRCDIR}/*.o ${SRCDIR}/*~
