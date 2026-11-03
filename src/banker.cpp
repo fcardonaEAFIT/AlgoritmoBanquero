@@ -9,9 +9,10 @@ Banker::Banker(string filename) :
 
   ifstream infile(filename.c_str());
 
-  if (!infile)
+  if (!infile) {
     throw BankerException(InputException,
 			  "opening file");
+  }
 
   try {
     YAML::Node bankerInfo = YAML::Load(infile);

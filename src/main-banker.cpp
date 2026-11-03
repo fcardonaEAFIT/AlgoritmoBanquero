@@ -65,8 +65,9 @@ ProcReq readingRequirement(const Banker& banker, int& nProcess,
     ::exit(1);
   }
 
-  if (nProcess < 0)
+  if (nProcess < 0) {
     return EndProcReq;
+  }
 
   if (!(nProcess < banker.getNumberProcess())) {
     cerr << "nroProcess incorrect" << endl;
